@@ -10,7 +10,7 @@ Steps Taken:
 4. Calculate the offset to our image's `main` routine by subtracting the address of `main` from the payload's image base  
 5. Use the `main` offset (added with step 1's address) with `CreateRemoteThread` to make a new thread in our target process and begin program flow  
 
-WinAPI and functions loaded from libraries should be calculated at runtime using function pointers in our payload code. This is because addresses will likely change between processes for most libraries: MSVCR120.dll might be loaded at different addresses in different processes.  
+WinAPI and functions loaded from libraries should be calculated at runtime using function pointers in our payload code. This is because addresses will likely change between processes for most libraries: MSVCR120.dll might be loaded at different addresses in different processes. In this example we're injecting a process into the 'x64dbg.exe' process, which can be seen in the second screencap below.
 
 ![Screenshot](example.png)  
 ![Screenshot](example2.png)  
