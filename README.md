@@ -1,7 +1,7 @@
 # Process Injection
 Evasion & Injection Technique: Copies the current process into a target process and begins execution (Windows)  
 
-This example shows how we can inject code (or a process) into another running process, which creates persistence, assists with evasion, and allows code injection.
+This example shows how we can mirror the code of a loaded image (exe or dll) into another running process, which creates a 'rogue' process running inside the target process.
 
 Steps Taken:  
 1. Open the target process and allocate space greater or equal to the payload's image size using `VirtualAllocEx`  
@@ -10,7 +10,9 @@ Steps Taken:
 4. Calculate the offset to our image's `main` routine by subtracting the address of `main` from the payload's image base  
 5. Use the `main` offset (added with step 1's address) with `CreateRemoteThread` to make a new thread in our target process and begin program flow  
 
-WinAPI and functions loaded from libraries should be calculated at runtime using function pointers in our payload code. This is because addresses will likely change between processes for most libraries: MSVCR120.dll might be loaded at different addresses in different processes. In this example we're injecting a process into the 'x64dbg.exe' process, which can be seen in the second screencap below.
+WinAPI and functions loaded from libraries should be calculated at runtime using function pointers in our payload code. This is because addresses will likely change between processes for most libraries: MSVCR120.dll might be loaded at different addresses in different processes. In this example we're injecting a process into the 'x64dbg.exe' process, which can be seen in the second screencap below. This technique might sound similar to process hollowing, but was not based off it in any way.  
+
+We can also successfully inject DLLs into remote processes with this technique. We go through the same steps as above, but call `LoadLibrary` in our host/loader process before step 1. We then take the loaded dll image and copy its bytes to the target process, and point our remote thread at the offset of `DllMain` instead of `main`. A pattern scanner can be used to easily grab the offset of `DllMain` in our payload DLL. We then create a remote thread on `dllMain`, and we've now successfully loaded an unmanaged 'rogue' DLL in our target.  
 
 ![Screenshot](example.png)  
 ![Screenshot](example2.png)  
