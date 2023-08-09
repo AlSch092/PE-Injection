@@ -12,7 +12,7 @@ Steps Taken:
 
 WinAPI and functions loaded from libraries should be calculated at runtime using function pointers in our payload code. This is because addresses will likely change between processes for most libraries: MSVCR120.dll might be loaded at different addresses in different processes. In this example we're injecting a process into the 'x64dbg.exe' process, which can be seen in the second screencap below. This technique might sound similar to process hollowing, but was not based off it in any way.  
 
-We can also successfully inject DLLs into remote processes with this technique. We go through the same steps as above, but call `LoadLibrary` in our host/loader process before step 1. We then take the loaded dll image and copy its bytes to the target process, and point our remote thread at the offset of `DllMain` instead of `main`. A pattern scanner can be used to easily grab the offset of `DllMain` in our payload DLL. We then create a remote thread on `dllMain`, and we've now successfully loaded an unmanaged 'rogue' DLL in our target.  
+We can also inject DLLs into remote processes with this technique. We go through the same steps as above, but call `LoadLibrary` in our host/loader process before step 1. We then take the loaded dll image and copy its bytes to the target process, and point our remote thread at the offset of `DllMain` instead of `main`. A pattern scanner can be used to easily grab the offset of `DllMain` in our payload DLL. We then create a remote thread on `dllMain`, and we've now successfully loaded an unmanaged 'rogue' DLL in our target.  
 
 ![Screenshot](example.png)  
 ![Screenshot](example2.png)  
