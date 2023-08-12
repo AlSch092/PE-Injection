@@ -117,9 +117,130 @@ bool CopyImageToTargetProcess(DWORD processId)
 	return true;
 }
 
+
+/*
+Loads dll into current process, then copies all bytes into target process and begins dllMain
+*/
+bool InjectDll(wchar_t* dllName, wchar_t* processName)
+{
+	bool result = false;
+
+	if (dllName == nullptr || processName == nullptr)
+	{
+		printf("dllName or ProcName was NULL!\n");
+		return false;
+	}
+
+	HMODULE dll = LoadLibraryW(dllName); //we don't need LoadLibrary called in the target process, only the host
+
+	if (dll == NULL)
+	{
+		printf("LoadLibrary failed: %d!\n", GetLastError());
+		return false;
+	}
+
+	LPVOID baseAddress = dll;
+
+	HANDLE hProcess = GetCurrentProcess(); //payload process
+	HANDLE targetProc = OpenProcess(PROCESS_ALL_ACCESS, FALSE, GetTargetThreadIDFromProcName(processName));
+	DWORD processId, threadId = 0;
+	MODULEINFO moduleInfo;
+	GetModuleInformation(hProcess, dll, &moduleInfo, sizeof(MODULEINFO));
+	SIZE_T imageSize = moduleInfo.SizeOfImage; 	//Get the image size
+
+	if (targetProc == NULL)
+	{
+		printf("Failed to open target process: %d with error %d\n", targetProc, GetLastError());
+		return false;
+	}
+
+	LPVOID newImageAddress = VirtualAllocEx(targetProc, NULL, imageSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE); //Allocate memory for the new image in the target process
+
+	if (newImageAddress == NULL)
+	{
+		printf("Failed to allocate memory in target process: %d with error %d\n", targetProc, GetLastError());
+		return false;
+	}
+
+	printf("Allocated at: 0x%llX in target process\n", newImageAddress);
+	BYTE* shadow_proc = new BYTE[imageSize];
+
+	//Update the image base address!
+	PIMAGE_DOS_HEADER pDosHeader = (PIMAGE_DOS_HEADER)baseAddress;
+	PIMAGE_NT_HEADERS pNtHeaders = (PIMAGE_NT_HEADERS)((DWORD_PTR)baseAddress + pDosHeader->e_lfanew);
+
+	DWORD dwOldProt = 0;
+
+	if (!VirtualProtect(pNtHeaders, sizeof(IMAGE_NT_HEADERS), PAGE_EXECUTE_READWRITE, &dwOldProt))
+	{
+		printf("Failed to VirtualProtect on host process pNtHeaders with error %d\n", GetLastError());
+		g_Inserted = false;
+		return false;
+	}
+
+	pNtHeaders->OptionalHeader.ImageBase = (DWORD_PTR)newImageAddress; //non-offset address in image header needs to be updated
+
+	memcpy(shadow_proc, baseAddress, imageSize);
+
+	if (!VirtualProtect(pNtHeaders, sizeof(IMAGE_NT_HEADERS), dwOldProt, &dwOldProt)) //change back to old page protections
+	{
+		printf("Failed to VirtualProtect on host process pNtHeaders with error %d\n", GetLastError());
+		g_Inserted = false;
+		return false;
+	}
+
+	SIZE_T nBytesWritten;
+	if (!WriteProcessMemory(targetProc, newImageAddress, shadow_proc, imageSize, &nBytesWritten)) //write all sections of image to target process
+	{
+		printf("Failed to write memory of target process: %d with error %d\n", targetProc, GetLastError());
+		g_Inserted = false;
+		return false;
+	}
+
+	printf("Wrote %d bytes to target process\n", nBytesWritten);
+
+	if (!VirtualProtectEx(targetProc, newImageAddress, imageSize, PAGE_EXECUTE_READ, &dwOldProt))
+	{
+		printf("Failed to VirtualProtectEx on target process memory with error %d\n", GetLastError());
+		g_Inserted = false;
+		return false;
+	}
+
+	//need DLLMain offset, use Pattern scanning 
+	UINT64 dllMainOffset = FindRemotePattern(pattern_dllmain, 11, L"x64dbg.exe");
+
+	if (dllMainOffset == 0)
+	{
+		printf("Couldn't find DLLMain pattern.\n");
+		return false;
+	}
+	UINT64 rebased_main = (UINT64)(newImageAddress) + dllMainOffset; //main is not the 'true start' of a program, but most things should be initialized by the target process and thus we can skip directly to calling main in a new thread.
+		 
+	printf("rebased_dllmain at %llX\n", rebased_main);
+
+	HANDLE hThread = CreateRemoteThread(targetProc, NULL, 0, (LPTHREAD_START_ROUTINE)rebased_main, NULL, 0, &threadId); //now we create a new thread to resume execution at the new image location or some custom spot
+
+	if (hThread == NULL)
+	{
+		printf("Could not start thread at rebased_main in target process: %d\n", GetLastError());
+		g_Inserted = false;
+		return false;
+	}
+
+	return true;
+}
+
 int main(int argc, char** argv)
 {
-	if (!g_Inserted)
+	
+	/* if (!InjectDll(L"InsertProcess.dll", L"x64dbg.exe")) //dll injection version
+	{
+		printf("injecting dll failed!\n");
+		system("pause");
+		return 0;
+	} */
+	
+	if (!g_Inserted) //process version
 	{
 		if (CopyImageToTargetProcess(GetTargetThreadIDFromProcName(L"x64dbg.exe"))) //make sure architecture of target matches this project
 		{
