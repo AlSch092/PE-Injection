@@ -1,47 +1,54 @@
 /*
-Process Injection: Copy current process into target process and begin execution
+Process/Image Injection: Obscure shellcode injection method
 
 Topic: Malware/Evasion, Process Manipulation
+
+Copies current process module into target process and begin execution, undetected by most AC systems. A 'module' is injected which cannot be found through traditional enumeration methods (walk dll list won't work as there is no named module)
 
 Can likely be extended to a work as a DLL injector which doesn't rely on LoadLibrary being called (only writable memory is needed in a target process).
 	-> Change project type to .dll, make second project which loads this project as .dll and call InsertProcess in our dll on the target process.
 	-> possibly dllexport the InsertProcess function and call it from another project, the DLL will copy all its bytes to the target and then run its DLLMain (you must change main() offset to Dllmain()).
 
-by AlSch092 @ Github, Aug. 6 2023  
+by AlSch092 @ Github, Aug. 6 2023, updated Dec. 1 2023  
 */
+#include "Pattern.hpp"
 #include <stdio.h>
-#include <Windows.h>
 #include <Psapi.h>
 #include <tlhelp32.h> 
+#include "Memory.hpp" //memory writing, hooking ,etc
 
 bool g_Inserted = false; //switch determines program flow
 
 int main(int argc, char** argv); //forward decl as we need this address in InsertProcess
 DWORD GetTargetThreadIDFromProcName(const wchar_t * ProcName);
 
+//TODO:
+//const UINT64 dllMainOffset = 0x1020; //48 83 ec 28 FF CA 75 15 48 8d 15 ?? ?? ?? ?? 45 33 C9 45 33 C0 33 C9
+BYTE pattern_dllmain[] = { 0x48, 0x83, 0xEC, 0x38, 0xF7, 0xC2, 0xFC, 0xFF, 0xFF, 0xFF, 0x75 };
+
 bool CopyImageToTargetProcess(DWORD processId)
 {
 	if (g_Inserted)
 		return false;
 
-	DWORD dwOldProt = 0;
-	HANDLE hProcess = GetCurrentProcess();
-
-	HMODULE hModule = GetModuleHandle(NULL);
-	LPVOID baseAddress = hModule;
 	DWORD dwProt = 0;
 	DWORD threadId = 0;
+	DWORD dwOldProt = 0;
 
-	//Get the image size
+	HMODULE hModule = GetModuleHandle(NULL);
+
+	LPVOID baseAddress = hModule;
+
+	HANDLE hProcess = GetCurrentProcess(); //payload process
+	HANDLE targetProc = OpenProcess(PROCESS_ALL_ACCESS, FALSE, processId);
+
 	MODULEINFO moduleInfo;
 	GetModuleInformation(hProcess, hModule, &moduleInfo, sizeof(MODULEINFO));
-	SIZE_T imageSize = moduleInfo.SizeOfImage;
-
-	HANDLE targetProc = OpenProcess(PROCESS_ALL_ACCESS, FALSE, processId);
+	SIZE_T imageSize = moduleInfo.SizeOfImage; 	//Get the image size
 
 	if (targetProc == NULL)
 	{
-		printf("Failed to open target process: %d with error %d\n", processId, GetLastError());
+		printf("Failed to open target process with error %d\n", GetLastError());
 		return false;
 	}
 
@@ -116,7 +123,6 @@ bool CopyImageToTargetProcess(DWORD processId)
 
 	return true;
 }
-
 
 /*
 Loads dll into current process, then copies all bytes into target process and begins dllMain
@@ -230,22 +236,68 @@ bool InjectDll(wchar_t* dllName, wchar_t* processName)
 	return true;
 }
 
+DWORD GetTargetThreadIDFromProcName(const wchar_t * ProcName) //get pid from executable/process name
+{
+	PROCESSENTRY32W pe;
+	HANDLE thSnapShot;
+	BOOL retval, ProcFound = false;
+
+	thSnapShot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+	if (thSnapShot == INVALID_HANDLE_VALUE)
+	{
+		printf("Error: Unable to create toolhelp snapshot!");
+		return 0;
+	}
+
+	pe.dwSize = sizeof(PROCESSENTRY32);
+
+	retval = Process32FirstW(thSnapShot, &pe);
+	while (retval)
+	{
+		if (wcscmp(pe.szExeFile, ProcName) == 0)
+			return pe.th32ProcessID;
+
+		retval = Process32NextW(thSnapShot, &pe);
+	}
+
+	return 0;
+}
+
+extern int Main();
+
+VOID MemWriteThread()
+{
+	//memory can be read or written to here. to use things like winforms, you need to load all required dlls into the target process and fix any relocations/pointers
+	UINT64 M4 = (UINT64)GetModuleHandleW(L"coolgame.exe");
+	
+	Hacks::HACK hDmgHack = { M4 + 0x162F6F8, (BYTE*)"\x8B\xD8", (BYTE*)"\x8B\xDD", 2 };
+	Hacks::WriteHackBytes(hDmgHack, TRUE);
+}
+
+//main is called twice: once at regular startup (this process), and once during our 'injected image' in the target process. we are 'reflecting' the image in our local process into our target process
 int main(int argc, char** argv)
 {
-	
-	/* if (!InjectDll(L"InsertProcess.dll", L"x64dbg.exe")) //dll injection version
+	bool is_injecting_dll = false; //if set this to true, the reflected image is a DLL (first loaded into the local process then ref;ected into target)
+
+	if (is_injecting_dll)
 	{
-		printf("injecting dll failed!\n");
+		if (!InjectDll(L"InsertProcess.dll", L"coolgame.exe"))  //DLL-injection version -> loads DLL into local process then copies all bytes to target process and launches DLLmain
+		{
+			printf("injecting dll failed!\n");
+			system("pause");
+			return 0;
+		}
+
 		system("pause");
 		return 0;
-	} */
-	
-	if (!g_Inserted) //process version
+	}
+
+	if (!g_Inserted) //in the copied version in our target .exe, g_Inserted will be TRUE which makes execution skip over this block
 	{
-		if (CopyImageToTargetProcess(GetTargetThreadIDFromProcName(L"x64dbg.exe"))) //make sure architecture of target matches this project
+		if (CopyImageToTargetProcess(GetTargetThreadIDFromProcName(L"coolgame.exe"))) //make sure architecture of target matches this project
 		{
 			printf("Successfully inserted process!\n");
-			exit(0);
+			exit(0); //flow moves to here after image is copied to target. host process exits normally
 		}
 		else
 		{
@@ -254,44 +306,10 @@ int main(int argc, char** argv)
 		}
 	}
 
-	//!! flow only reaches here from inside the target process !!
+	//!! flow only reaches here from inside the target process, not the local process !!
 	MessageBoxA(0, "Hello from the target process!", "Process Injector", 0);
-
-	//AFTER we insert our code into a live exe, we need to call APIs by building function pointers at runtime
-	//because when we enter into another address space the loaded modules base addresses might differ, leading to program crash. 
-	HMODULE h_MSVCR120 = (HMODULE)GetModuleHandleA("MSVCR120.dll");
-	UINT64 system_addr = (UINT64)GetProcAddress(h_MSVCR120, "system");
-
-	typedef void(*_system)(char*);
-	_system pause_call = (_system)system_addr;
-	pause_call("pause"); //...and it works! 
-
-	return 0;
-}
-
-DWORD GetTargetThreadIDFromProcName(const wchar_t * ProcName) //get pid from executable/process name
-{
-	PROCESSENTRY32 pe;
-	HANDLE thSnapShot;
-	BOOL retval, ProcFound = false;
-
-	thSnapShot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-	if (thSnapShot == INVALID_HANDLE_VALUE)
-	{
-		printf("Error: Unable <strong class=\"highlight\">to</strong> create toolhelp snapshot!");
-		return 0;
-	}
-
-	pe.dwSize = sizeof(PROCESSENTRY32);
-
-	retval = Process32First(thSnapShot, &pe);
-	while (retval)
-	{
-		if (wcscmp(pe.szExeFile, ProcName) == 0)
-			return pe.th32ProcessID;
-
-		retval = Process32Next(thSnapShot, &pe);
-	}
-
+	//if you're calling functions in libraries which aren't loaded in the target process, the program will crash. you need to call LoadLibrary here, then build function pointers to whatever function using GetProcAddress.
+	//essentially this is shellcode which is inserted to the target as there is no official module loaded through this technique.
+	CreateThread(0, 0, (LPTHREAD_START_ROUTINE)MemWriteThread, 0, 0, 0);
 	return 0;
 }
