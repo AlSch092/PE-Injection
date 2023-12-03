@@ -1,4 +1,4 @@
-# Process Injection
+# Injection Technique: Loaded Module Reflection
 Evasion & Injection Technique: Copies the current process module into a target process and begins execution (Windows)  
 
 This example shows how we can mirror a loaded module (exe or dll) into another running process, which creates a 'rogue' module running inside the target process. Similar to shellcode injection, but has features of DLL/process injection. The injected module is undetected by most anti-cheat systems, thus it can be used for reading and writing memory.
