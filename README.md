@@ -1,7 +1,7 @@
 # Injection Technique: Loaded Module Reflection
 Evasion & Injection Technique: Copies the current process module into a target process and begins execution (Windows)  
 
-This example shows how we can mirror a loaded module (exe or dll) into another running process, which creates a 'rogue' module running inside the target process. Similar to shellcode injection, but has features of DLL/process injection. The injected module is undetected by most anti-cheat systems, thus it can be used for reading and writing memory.
+This example shows how we can mirror a loaded module (exe or dll) into another running process, which creates 'managed shellcode' with no detectable module running inside the target process. The injected module is undetected by most anti-cheat systems and won't show up from DLL walking, thus it can be used for delivery of some payload or patching bytes.  
 
 Steps Taken:  
 1. Open the target process and allocate space greater or equal to the payload's image size using `VirtualAllocEx`  
@@ -10,11 +10,11 @@ Steps Taken:
 4. Calculate the offset to our image's `main` routine by subtracting the address of `main` from the payload's image base  
 5. Use the `main` offset (added with step 1's address) with `CreateRemoteThread` to make a new thread in our target process and begin program flow  
 
-WinAPI and functions loaded from libraries should be calculated at runtime using function pointers in our payload code. This is because addresses will likely change between processes for most libraries: MSVCR120.dll might be loaded at different addresses in different processes. In this example we're injecting a process into the 'x64dbg.exe' process, which can be seen in the second screencap below. 
+In summary, this technique allocates some space in the target, writes the current process module bytes to it, finds the 'WinMain' or 'Main' or 'Dllmain' offset, then creates a remote thread at that offset to execute the payload.  
+
+For this technique you will want to call function pointers (address calculated at runtime with GetProcAddress) for any calls outside this module, otherwise crashes will occur. This is because the .dll containing that function might not be loaded in your target process, or is loaded in the target process at some other address. You are 'living off the land' of the target process and must make use of the modules loaded inside the target, otherwise the chance of detection grows if you start loading extra .dlls at runtime to get your own code to work properly. A code example has been added with Windows Forms as a GUI to better display this concept.  
 
 We can also inject DLLs into remote processes with this technique. We go through the same steps as above, but call `LoadLibrary` in our host/loader process before step 1. We then take the loaded dll image and copy its bytes to the target process, and point our remote thread at the offset of `DllMain` instead of `main`. A pattern scanner can be used to easily grab the offset of `DllMain` in our payload DLL. We then create a remote thread on `dllMain`, and we've now successfully loaded an unmanaged 'rogue' DLL in our target.  
 
 ![Screenshot](example.png)  
 ![Screenshot](example2.png)  
-
-If you feel there's anything wrong or missing from this example, feel free to open an issue or pull request!
