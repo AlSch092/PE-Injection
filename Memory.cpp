@@ -1,3 +1,4 @@
+//By AlSch092 @ github
 #include "Memory.hpp"
 
 VOID Hacks::WriteHackBytes(HACK hHack, BOOL bEnable) {

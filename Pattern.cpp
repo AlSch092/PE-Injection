@@ -1,3 +1,4 @@
+//By AlSch092 @ github
 #include "Pattern.hpp"
 
 UINT64 GetBaseAddress(const wchar_t* name)
@@ -49,7 +50,6 @@ UINT64 GetBaseAddress(const wchar_t* name)
 		}
 	}
 
-	// Clean up
 	CloseHandle(hProcess);
 	return 0;
 }
@@ -81,6 +81,11 @@ DWORD GetProcessIdByName(const wchar_t* processName)
 	return processId;
 }
 
+unsigned int GetRemoteImageSize(const wchar_t* procName) //todo: finish this routine (example still works without it)
+{
+	return 0;
+}
+
 UINT64 FindRemotePattern(const unsigned char* pattern, int length, const wchar_t* procName)
 {
 	DWORD targetProcessId = GetProcessIdByName(procName);
@@ -101,10 +106,16 @@ UINT64 FindRemotePattern(const unsigned char* pattern, int length, const wchar_t
 	unsigned char buffer[4096];
 	UINT64 base = GetBaseAddress(procName);
 
-	for (UINT64 i = base; i < (base + 0x3000); i++)
-	{
+	unsigned int processImageSize = GetRemoteImageSize(procName);
+	processImageSize = 0x3000; //REMOVE THIS after finishing GetRemoteImageSize function -> the code size for this project is around 0x3000 bytes 
 
-		ReadProcessMemory(hProcess, (LPCVOID)i, buffer, sizeof(buffer), &bytesRead);
+	for (UINT64 i = base; i < (base + processImageSize); i++) //TODO: change +0x3000 to being grabbed dynamically, need to get the image size remotely
+	{
+		if (!ReadProcessMemory(hProcess, (LPCVOID)i, buffer, sizeof(buffer), &bytesRead)) //very slow method, can be optimized bigly -> call once with imageSize, then remove it from loop, loop over a copy 
+		{
+			wprintf(L"Couldn't read remote memory@FindRemotePattern: %s, %s", pattern, procName);
+			return 0;
+		}
 
 		for (size_t i = 0; i < bytesRead - length + 1; i++) 
 		{
