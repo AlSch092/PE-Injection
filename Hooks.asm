@@ -9,7 +9,7 @@ EXTERN PacketLogCallbackAddr : QWORD
 
 AESEncrypt_CBC128 PROC
 
-	pop r10
+    pop r10
 
     push rax
     push rbx
@@ -27,14 +27,14 @@ AESEncrypt_CBC128 PROC
     push r13
     push r14
     push r15
-	pushfq
+    pushfq
 
-	sub rsp, 28h
-	call PacketLogCallbackAddr ;
-	add rsp, 28h
+    sub rsp, 28h
+    call PacketLogCallbackAddr 
+    add rsp, 28h
 
     popfq
-	pop r15
+    pop r15
     pop r14
     pop r13
     pop r12
@@ -51,8 +51,8 @@ AESEncrypt_CBC128 PROC
     pop rbx
     pop rax
 
-	mov [rsp+18h], rbx
-	jmp HookReturnAddr
+    mov [rsp+18h], rbx
+    jmp HookReturnAddr
 AESEncrypt_CBC128 ENDP
 
 END
