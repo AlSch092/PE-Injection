@@ -92,6 +92,38 @@ bool ReflectCurrentModuleToRemoteProcess(DWORD processId)
 
 		pNtHeaders->OptionalHeader.ImageBase = (DWORD_PTR)newImageAddress; //non-offset address in image header needs to be updated
 
+		//fix relocations
+		PIMAGE_BASE_RELOCATION relocationTable = (PIMAGE_BASE_RELOCATION)((DWORD_PTR)baseAddress + pNtHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].VirtualAddress);
+		DWORD relocationEntriesCount = 0;
+		PDWORD_PTR relocAddress = 0;
+		PBASE_RELOCATION_ENTRY relocationRVA = NULL;
+
+		DWORD_PTR deltaImageBase = (DWORD_PTR)newImageAddress - (DWORD_PTR)baseAddress;
+
+		while (relocationTable->SizeOfBlock > 0)
+		{
+			relocationEntriesCount = (relocationTable->SizeOfBlock - sizeof(IMAGE_BASE_RELOCATION)) / sizeof(USHORT);
+			relocationRVA = (PBASE_RELOCATION_ENTRY)(relocationTable + 1);
+
+			for (short i = 0; i < relocationEntriesCount; i++)
+			{
+				if (relocationRVA[i].Offset)
+				{
+					relocAddress = (PDWORD_PTR)((DWORD_PTR)baseAddress + relocationTable->VirtualAddress + relocationRVA[i].Offset);
+
+					DWORD dwOldProt = 0;
+					if (!VirtualProtect((LPVOID)relocAddress, sizeof(UINT64), PAGE_EXECUTE_READWRITE, &dwOldProt))
+					{
+						printf("Failed to VirtualProtect on host process relocations with error %d\n", GetLastError());
+						goto error;
+					}
+
+					*relocAddress += deltaImageBase;
+				}
+			}
+			relocationTable = (PIMAGE_BASE_RELOCATION)((DWORD_PTR)relocationTable + relocationTable->SizeOfBlock);
+		}
+
 		memcpy(shadow_proc, baseAddress, imageSize);
 
 		if (!VirtualProtect(pNtHeaders, sizeof(IMAGE_NT_HEADERS), dwOldProt, &dwOldProt)) //change back to old page protections
@@ -117,7 +149,7 @@ bool ReflectCurrentModuleToRemoteProcess(DWORD processId)
 
 		UINT64 mainFuncOffset = (UINT64)WinMain - (UINT64)moduleInfo.lpBaseOfDll; //Get offset of our main routine, we can use pattern scanning here also
 
-		UINT64 rebased_main = (UINT64)(newImageAddress) + mainFuncOffset; //main is not the 'true start' of a program, but most things should be initialized by the target process and thus we can skip directly to calling main in a new thread.
+		UINT64 rebased_main = (UINT64)(newImageAddress)+mainFuncOffset; //main is not the 'true start' of a program, but most things should be initialized by the target process and thus we can skip directly to calling main in a new thread.
 
 		printf("rebased_main at %llX\n", rebased_main);
 
@@ -131,7 +163,7 @@ bool ReflectCurrentModuleToRemoteProcess(DWORD processId)
 		else
 			return true;
 
-error:
+	error:
 		g_Injected = false;
 		delete[] shadow_proc;
 		return false;
