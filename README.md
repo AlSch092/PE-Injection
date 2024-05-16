@@ -20,7 +20,7 @@ In summary, this technique allocates some space in the target, writes the curren
 3. Preventing foreign calls to `OpenProcess` from succeeding will make the entire technique fail
 
 # Notice  
-For this technique it's recommended to call WINAPI function pointers with their address calculated at runtime using GetProcAddress. If your process calls out to a function in a module which is not loaded in the target process, this will likely fail crash the target process unless you explicitly load the required module first. 
+For this technique it's recommended to call WINAPI function pointers with their address calculated at runtime using GetProcAddress. If your process calls out to a function in a module which is not loaded in the target process, this will likely fail crash the target process unless you explicitly load the required module first. For example, if your payload/host process uses `USER32.dll` but the target process has not loaded this module, calling `MessageBoxA` may crash the target process since there's wrong bytes or no memory allocated at the expected address.
 
 # Screenshots  
 ![Screenshot](example.png)  
