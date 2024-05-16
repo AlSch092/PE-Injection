@@ -1,5 +1,5 @@
 ## Injection Technique: Loaded Module Reflection  
-Evasion & Injection Technique: Copies the current process into a target process and begins execution. Same concept as PE Injection.
+Copies the current process image into a target process and begins execution on WinMain. Same concept as documented at https://www.ired.team/offensive-security/code-injection-process-injection/pe-injection-executing-pes-inside-remote-processes with slightly different implementation.
 
 # What is this?  
 This example shows how we can inject the current PE image into another running process and execute some payload. The injected code is undetected by most usermode anti-cheat systems and won't show up from DLL walking. The code example has been expanded to show how a working Win32 GUI can be spawned; the GUI can then be used for some other logic, providing us a foothold onto the target process.
