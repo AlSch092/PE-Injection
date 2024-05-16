@@ -1,5 +1,5 @@
 ## Injection Technique: Loaded Module Reflection  
-Evasion & Injection Technique: Copies the current process module into a target process and begins execution (Windows)  
+Evasion & Injection Technique: Copies the current process into a target process and begins execution. Same concept as PE Injection.
 
 # What is this?  
 This example shows how we can mirror a loaded module into another running process, which acts as a stager for payloads. The injected code is undetected by many usermode anti-cheat systems and won't show up from DLL walking, thus it can be used for delivery of some payload. The code example has been expanded to show how a working Win32 GUI can be spawned: the GUI can then be used to control read/writes on memory or do other actions and thus acts like a stager. This project displays similar concepts to MITRE technique T1620, which can be found at https://attack.mitre.org/techniques/T1620/.
